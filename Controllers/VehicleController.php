@@ -51,9 +51,9 @@ class VehicleController extends Controller
     public function list($status)
     {
         if ($status != 'all') {
-            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->where('status', $status)->with('inspections')->get();
+            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->where('status', $status)->get();
         } else {
-            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->with('inspections')->get();
+            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
         }
 
         return Inertia::render('Vehicle/Index', [
@@ -66,7 +66,7 @@ class VehicleController extends Controller
 
         $vehicles = $organization->vehicles()
             ->where('status', 'active')
-            ->with('inspections')
+            
             ->get();
 
         return response()->json($vehicles);
@@ -74,7 +74,7 @@ class VehicleController extends Controller
     public function index()
     {
 
-        $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->with('inspections')->get();
+        $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles
