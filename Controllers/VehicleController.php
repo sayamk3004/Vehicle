@@ -157,7 +157,7 @@ class VehicleController extends Controller
 
             if ($request->has('image') && $request->image != '') {
                 $image_name = null;
-                $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
+                $image_name = Helpers::upload_shared('vehicles/', 'webp', $request->file('image'));
                 $vehicle->image = $image_name;
             }
             $vehicle->save();
@@ -222,7 +222,7 @@ class VehicleController extends Controller
             $vehicle->slug = 'active';
             $image_name = null;
             if ($request->has('image')) {
-                $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
+                $image_name = Helpers::upload_shared('vehicles/', 'webp', $request->file('image'));
             }
             $vehicle->image = $image_name;
             $vehicle->save();
