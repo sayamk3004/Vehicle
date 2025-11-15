@@ -13,6 +13,7 @@ use Inertia\Inertia;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -66,19 +67,29 @@ class VehicleController extends Controller
 
         $vehicles = $organization->vehicles()
             ->where('status', 'active')
-            
+
             ->get();
 
         return response()->json($vehicles);
     }
     public function index()
     {
+        if (!$this->authService->getAuthenticatedUser()) {
+            if (Auth::guard('admin')->check()) {
+                $vehicles = Vehicle::all();
 
-        $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
+                return Inertia::render('Vehicle/Index', [
+                    'vehicles' => $vehicles
+                ]);
+            }
+            abort(403, 'No Permission');
+        } else {
+            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
 
-        return Inertia::render('Vehicle/Index', [
-            'vehicles' => $vehicles
-        ]);
+            return Inertia::render('Vehicle/Index', [
+                'vehicles' => $vehicles
+            ]);
+        }
     }
     public function view($id)
     {
@@ -107,7 +118,6 @@ class VehicleController extends Controller
                 'description' => 'required',
                 'reg_num' => [
                     'required',
-                    // Rule::unique('vehicles')->ignore($id),
                 ],
                 'price' => 'required',
                 'seats' => 'required|integer|min:2', // Ensures seats is at least 2
@@ -139,10 +149,7 @@ class VehicleController extends Controller
             } else {
                 $slug = Str::slug($request->title, '-');
             }
-            $user = Auth::user();
             $vehicle = Vehicle::findOrfail($id);
-            $vehicle->user_id = $user->id;
-            $vehicle->organization_id = $user->organization_id;
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
             $vehicle->price = $request->price;
@@ -157,7 +164,7 @@ class VehicleController extends Controller
 
             if ($request->has('image') && $request->image != '') {
                 $image_name = null;
-                $image_name = Helpers::upload_shared('vehicles/', 'webp', $request->file('image'));
+                $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
                 $vehicle->image = $image_name;
             }
             $vehicle->save();
@@ -204,6 +211,13 @@ class VehicleController extends Controller
             } else {
                 $slug = Str::slug($request->title, '-');
             }
+            $data = [
+                'mode' => 'vehicle',
+                'pageType' => 'Booking', // for example
+                'type' => 'private', // public or private
+                'bookingSlug' => $slug
+            ];
+            $token = Crypt::encryptString(json_encode($data));
             $vehicle = new Vehicle();
             $user = Auth::user();
             $vehicle->user_id = $user->id;
@@ -219,10 +233,11 @@ class VehicleController extends Controller
             $vehicle->color = $request->color;
             $vehicle->mileage = $request->mileage;
             $vehicle->slug = $slug;
-            $vehicle->slug = 'active';
+            $vehicle->status = 'active';
+            $vehicle->token = $token;
             $image_name = null;
             if ($request->has('image')) {
-                $image_name = Helpers::upload_shared('vehicles/', 'webp', $request->file('image'));
+                $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
             }
             $vehicle->image = $image_name;
             $vehicle->save();
@@ -268,17 +283,10 @@ class VehicleController extends Controller
     {
         $vehicle = Vehicle::findOrFail($id);
 
-        foreach ($vehicle->inspections as $inspection) {
-            foreach ($inspection->images as $image) {
-                Storage::disk('public')->delete("inspections/" . $image);
-                $image->delete();
-            }
-            $inspection->delete();
-        }
 
         foreach ($vehicle->maintenances as $maintenance) {
             if ($maintenance->image) {
-                Storage::disk('public')->delete("maintainance/" . $maintenance->image);
+                Storage::disk('s3')->delete("maintainance/{$maintenance->image}");
             }
             $maintenance->delete();
         }
@@ -287,8 +295,8 @@ class VehicleController extends Controller
             $jobVehicle->delete();
         }
 
-        if ($vehicle->image) {
-            Storage::disk('public')->delete('Vehicles/' . $vehicle->image);
+        if ($vehicle->image && $vehicle->image !== 'def.png') {
+            Storage::disk('s3')->delete(ltrim($vehicle->image, '/'));
         }
 
         $vehicle->delete();

@@ -39,7 +39,7 @@ class VehicleController extends Controller
     {
         $vehicles = $this->orgScopedQuery()->get();
 
-        return Inertia::render('Admin/Vehicle/Index', [
+        return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,
         ]);
     }
@@ -54,7 +54,7 @@ class VehicleController extends Controller
 
         $vehicles = $q->get();
 
-        return Inertia::render('Admin/Vehicle/Index', [
+        return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,
         ]);
     }
@@ -220,13 +220,7 @@ class VehicleController extends Controller
     {
         $vehicle = $this->orgScopedQuery()->findOrFail($id);
 
-        foreach ($vehicle->inspections as $inspection) {
-            foreach ($inspection->images as $image) {
-                Storage::disk('public')->delete("inspections/" . $image);
-                $image->delete();
-            }
-            $inspection->delete();
-        }
+
 
         foreach ($vehicle->maintenances as $maintenance) {
             if ($maintenance->image) {
