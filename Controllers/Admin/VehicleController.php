@@ -255,8 +255,8 @@ class VehicleController extends Controller
             $vehicleId,
             $request->date,
             $request->time,
-            $request->timezone,
-            $request->duration ?? 1
+            $request->duration ?? 1,
+            []
         );
 
         return response()->json(['available' => $available]);

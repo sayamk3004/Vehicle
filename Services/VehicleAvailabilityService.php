@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Modules\Vehicle\Services;
 
 
@@ -18,12 +19,14 @@ class VehicleAvailabilityService
      * @param int|null $duration in hours
      * @return bool
      */
-    public function isAvailable(int $vehicleId, string $date, string $time, ?int $duration = 1): bool
+    public function isAvailable(int $vehicleId, string $date, string $time, ?int $duration = 1, array $selectedVehicles = []): bool
     {
-        
+        if (in_array($vehicleId, $selectedVehicles)) {
+            return true;
+        }
+
         $requestedStart = Carbon::parse("$date $time");
         $requestedEnd = (clone $requestedStart)->addHours($duration);
-
 
         $vehicle = Vehicle::findOrfail($vehicleId);
         if (!$vehicle) return false;
@@ -31,7 +34,6 @@ class VehicleAvailabilityService
         $engagedJobs = JobVehicle::with(['job'])
             ->where('vehicle_id', $vehicleId)
             ->get();
-            
 
         foreach ($engagedJobs as $jobVehicle) {
             $jobable = $jobVehicle->job->jobable;
@@ -39,7 +41,6 @@ class VehicleAvailabilityService
 
             $jobStart = Carbon::parse("{$jobable->date} {$jobable->time}");
             $jobEnd = (clone $jobStart)->addHours($jobable->duration ?? 1);
-
 
             if ($requestedStart->lt($jobEnd) && $requestedEnd->gt($jobStart)) {
                 return false;
