@@ -23,7 +23,7 @@ Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.', 'middleware' => 'auth'
 });
 Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
     Route::get('/{slug}/fetch-vehicles', [VehicleController::class, 'fetch'])->name('fetch');
-    });
+});
 Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
     Route::get('/{vehicleId}/check-availability', [VehicleController::class, 'check'])->name('checkAvailability');
 });
@@ -58,5 +58,4 @@ Route::middleware(['auth:admin'])
             // filtered lists (active/paused/all)
             Route::get('/{status}', [AdminVehicleController::class, 'list'])->name('list');
         });
-
     });
