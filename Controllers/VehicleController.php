@@ -5,9 +5,12 @@ namespace App\Modules\Vehicle\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Shared\Contracts\AuthContract;
 use App\Modules\Shared\Helpers\Helpers;
+use App\Modules\Shared\Models\City;
 use App\Modules\Shared\Models\JobVehicle;
 use App\Modules\Shared\Models\Organization;
 use App\Modules\Shared\Models\Vehicle;
+use App\Modules\Shared\Models\Zone;
+use App\Modules\Shared\Models\ZoneAssignment;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
 use Inertia\Inertia;
 use Exception;
@@ -99,15 +102,28 @@ class VehicleController extends Controller
             'vehicle' => $vehicle,
         ]);
     }
-    public function add()
+    public function add(Request $request)
     {
-        return Inertia::render('Vehicle/Create');
+        $orgId = $request->user()->organization_id;
+
+$cities = City::orderBy('name')->get();        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+
+        return Inertia::render('Vehicle/Create', [
+            'cities' => $cities,
+            'zones' => $zones,
+        ]);
     }
     public function edit($id)
     {
-        $vehicle = Vehicle::findOrfail($id);
+        $vehicle = Vehicle::with('zoneAssignments')->findOrFail($id);
+
+        $orgId = $vehicle->organization_id;
+$cities = City::orderBy('name')->get();        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+
         return Inertia::render('Vehicle/Edit', [
             'vehicle' => $vehicle,
+            'cities' => $cities,
+            'zones' => $zones,
         ]);
     }
     public function update(Request $request, $id)
@@ -125,7 +141,10 @@ class VehicleController extends Controller
                 'mileage' => 'required',
                 'color' => 'required',
                 'model' => 'required',
-                'year' => 'required'
+                'year' => 'required',
+                'city_id' => 'required|exists:cities,id',
+                'zone_ids' => 'nullable|array',
+                'zone_ids.*' => 'exists:zones,id',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -161,6 +180,8 @@ class VehicleController extends Controller
             $vehicle->year = $request->year;
             $vehicle->color = $request->color;
             $vehicle->mileage = $request->mileage;
+            $vehicle->city_id = $request->city_id;
+
 
             if ($request->has('image') && $request->image != '') {
                 $image_name = null;
@@ -168,6 +189,14 @@ class VehicleController extends Controller
                 $vehicle->image = $image_name;
             }
             $vehicle->save();
+            $vehicle->zoneAssignments()->delete();
+            if ($request->filled('zone_ids')) {
+                $zoneAssignments = [];
+                foreach ($request->zone_ids as $zoneId) {
+                    $zoneAssignments[] = new ZoneAssignment(['zone_id' => $zoneId]);
+                }
+                $vehicle->zoneAssignments()->saveMany($zoneAssignments);
+            }
             return redirect()->back()->with('success', 'Vehicle updated successfully.');
         } catch (Exception $exception) {
             return back()->withErrors($exception->getMessage());
@@ -187,7 +216,10 @@ class VehicleController extends Controller
                 'mileage' => 'required',
                 'color' => 'required',
                 'model' => 'required',
-                'year' => 'required'
+                'year' => 'required',
+                'city_id' => 'required|exists:cities,id',
+                'zone_ids' => 'nullable|array',
+                'zone_ids.*' => 'exists:zones,id',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -235,12 +267,20 @@ class VehicleController extends Controller
             $vehicle->slug = $slug;
             $vehicle->status = 'active';
             $vehicle->token = $token;
+            $vehicle->city_id = $request->city_id;
             $image_name = null;
             if ($request->has('image')) {
                 $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
             }
             $vehicle->image = $image_name;
             $vehicle->save();
+            if ($request->filled('zone_ids')) {
+                $zoneAssignments = [];
+                foreach ($request->zone_ids as $zoneId) {
+                    $zoneAssignments[] = new ZoneAssignment(['zone_id' => $zoneId]);
+                }
+                $vehicle->zoneAssignments()->saveMany($zoneAssignments);
+            }
             return redirect()->route('vehicle.list', ['status' => 'active'])->with('success', 'Vehicle created successfully');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return redirect()->back()->withErrors($e->errors())->withInput();
