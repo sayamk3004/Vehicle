@@ -12,6 +12,7 @@ use App\Modules\Shared\Models\Vehicle;
 use App\Modules\Shared\Models\Zone;
 use App\Modules\Shared\Models\ZoneAssignment;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
+use App\Services\ZoneService;
 use Inertia\Inertia;
 use Exception;
 use Illuminate\Http\Request;
@@ -25,11 +26,13 @@ class VehicleController extends Controller
 {
     protected $authService;
     protected $availabilityService;
+    protected $zoneService;
 
-    public function __construct(AuthContract $authService, VehicleAvailabilityService $availabilityService)
+    public function __construct(AuthContract $authService, VehicleAvailabilityService $availabilityService,ZoneService $zoneService)
     {
         $this->authService = $authService;
         $this->availabilityService = $availabilityService;
+        $this->zoneService = $zoneService;
     }
 
 
@@ -75,6 +78,74 @@ class VehicleController extends Controller
 
         return response()->json($vehicles);
     }
+    public function search(Request $request, $slug)
+    {
+        $request->validate([
+            'from_lat' => 'nullable|numeric',
+            'from_lng' => 'nullable|numeric',
+            'to_lat'   => 'nullable|numeric',
+            'to_lng'   => 'nullable|numeric',
+            'service_type' => 'required|string|in:airport_transfer,point_to_point,hourly',
+            'date' => 'required|date',
+            'time' => 'required|date_format:H:i',
+            'duration_hours' => 'nullable|integer|min:1',
+        ]);
+
+        $organization = Organization::where('slug', $slug)->firstOrFail();
+
+        $vehicles = Vehicle::where('organization_id', $organization->id)
+            ->where('status', 'active')
+            ->get();
+
+        $filtered = $vehicles->filter(function ($vehicle) use ($request) {
+            $zones = $this->zoneService->getZonesForService($vehicle);
+
+            if ($zones->isEmpty()) {
+                return false;
+            }
+
+            // Check pickup location
+            if ($request->filled('from_lat') && $request->filled('from_lng')) {
+                $pickupPoint = [
+                    'lat' => $request->from_lat,
+                    'lng' => $request->from_lng,
+                ];
+                if (!$this->zoneService->validateLocationInZones($pickupPoint, $zones)) {
+                    return false;
+                }
+            }
+
+            // For non-hourly services, also check dropoff
+            if ($request->service_type !== 'hourly'
+                && $request->filled('to_lat') && $request->filled('to_lng')) {
+                $dropoffPoint = [
+                    'lat' => $request->to_lat,
+                    'lng' => $request->to_lng,
+                ];
+                if (!$this->zoneService->validateLocationInZones($dropoffPoint, $zones)) {
+                    return false;
+                }
+            }
+
+            // TODO: Add availability check using $request->date, $request->time, $request->duration_hours
+
+            return true;
+        });
+
+        $result = $filtered->values()->map(function ($v) {
+            return [
+                'id' => $v->id,
+                'title' => $v->title,
+                'image' => $v->image,
+                'seats' => $v->seats,
+                'price' => $v->price,
+                'luggage_capacity' => $v->luggage_capacity,
+                'series' => $v->series ?? $v->model,
+            ];
+        });
+
+        return response()->json(['vehicles' => $result]);
+    }
     public function index()
     {
         if (!$this->authService->getAuthenticatedUser()) {
@@ -106,7 +177,8 @@ class VehicleController extends Controller
     {
         $orgId = $request->user()->organization_id;
 
-$cities = City::orderBy('name')->get();        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $cities = City::orderBy('name')->get();
+        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
 
         return Inertia::render('Vehicle/Create', [
             'cities' => $cities,
@@ -118,7 +190,8 @@ $cities = City::orderBy('name')->get();        $zones = Zone::where('organizatio
         $vehicle = Vehicle::with('zoneAssignments')->findOrFail($id);
 
         $orgId = $vehicle->organization_id;
-$cities = City::orderBy('name')->get();        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $cities = City::orderBy('name')->get();
+        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
 
         return Inertia::render('Vehicle/Edit', [
             'vehicle' => $vehicle,

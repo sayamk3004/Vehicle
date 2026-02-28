@@ -23,6 +23,8 @@ Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.', 'middleware' => 'auth'
 });
 Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
     Route::get('/{slug}/fetch-vehicles', [VehicleController::class, 'fetch'])->name('fetch');
+    Route::post('/{slug}/search-vehicles', [VehicleController::class, 'search'])->name('search');
+
 });
 Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
     Route::get('/{vehicleId}/check-availability', [VehicleController::class, 'check'])->name('checkAvailability');
