@@ -12,6 +12,7 @@ use App\Modules\Shared\Models\Vehicle;
 use App\Modules\Shared\Models\Zone;
 use App\Modules\Shared\Models\ZoneAssignment;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
+use App\Services\DistanceCalculator;
 use App\Services\ZoneService;
 use Inertia\Inertia;
 use Exception;
@@ -28,7 +29,7 @@ class VehicleController extends Controller
     protected $availabilityService;
     protected $zoneService;
 
-    public function __construct(AuthContract $authService, VehicleAvailabilityService $availabilityService,ZoneService $zoneService)
+    public function __construct(AuthContract $authService, VehicleAvailabilityService $availabilityService, ZoneService $zoneService)
     {
         $this->authService = $authService;
         $this->availabilityService = $availabilityService;
@@ -89,6 +90,12 @@ class VehicleController extends Controller
             'date' => 'required|date',
             'time' => 'required|date_format:H:i',
             'duration_hours' => 'nullable|integer|min:1',
+            'return_date' => 'nullable|date|required_with:return_time',
+            'return_time' => 'nullable|date_format:H:i|required_with:return_date',
+            'return_from_lat' => 'nullable|numeric|required_with:return_date',
+            'return_from_lng' => 'nullable|numeric|required_with:return_date',
+            'return_to_lat' => 'nullable|numeric|required_with:return_date',
+            'return_to_lng' => 'nullable|numeric|required_with:return_date',
         ]);
 
         $organization = Organization::where('slug', $slug)->firstOrFail();
@@ -96,8 +103,9 @@ class VehicleController extends Controller
         $vehicles = Vehicle::where('organization_id', $organization->id)
             ->where('status', 'active')
             ->get();
+        $isRoundTrip = $request->filled('return_date');
 
-        $filtered = $vehicles->filter(function ($vehicle) use ($request) {
+        $filtered = $vehicles->filter(function ($vehicle) use ($request, $isRoundTrip) {
             $zones = $this->zoneService->getZonesForService($vehicle);
 
             if ($zones->isEmpty()) {
@@ -105,46 +113,97 @@ class VehicleController extends Controller
             }
 
             // Check pickup location
-            if ($request->filled('from_lat') && $request->filled('from_lng')) {
-                $pickupPoint = [
-                    'lat' => $request->from_lat,
-                    'lng' => $request->from_lng,
-                ];
-                if (!$this->zoneService->validateLocationInZones($pickupPoint, $zones)) {
-                    return false;
-                }
-            }
+            // if ($request->filled('from_lat') && $request->filled('from_lng')) {
+            //     $pickupPoint = [
+            //         'lat' => $request->from_lat,
+            //         'lng' => $request->from_lng,
+            //     ];
+            //     if (!$this->zoneService->validateLocationInZones($pickupPoint, $zones)) {
+            //         return false;
+            //     }
+            // }
+            if (!$this->validateLocation($request, $zones, 'from')) return false;
 
             // For non-hourly services, also check dropoff
-            if ($request->service_type !== 'hourly'
-                && $request->filled('to_lat') && $request->filled('to_lng')) {
-                $dropoffPoint = [
-                    'lat' => $request->to_lat,
-                    'lng' => $request->to_lng,
-                ];
-                if (!$this->zoneService->validateLocationInZones($dropoffPoint, $zones)) {
-                    return false;
-                }
+            if ($request->service_type !== 'hourly' && !$this->validateLocation($request, $zones, 'to')) return false;
+            if ($isRoundTrip) {
+                if (!$this->validateLocation($request, $zones, 'return_from')) return false;
+                if (!$this->validateLocation($request, $zones, 'return_to')) return false;
             }
 
-            // TODO: Add availability check using $request->date, $request->time, $request->duration_hours
+            $outwardAvailable = $this->availabilityService->isAvailable(
+                $vehicle->id,
+                $request->date,
+                $request->time,
+                $request->duration_hours ?? 1
+            );
+            if (!$outwardAvailable) return false;
 
+            // Availability check for return leg (if round trip)
+            if ($isRoundTrip) {
+                $returnAvailable = $this->availabilityService->isAvailable(
+                    $vehicle->id,
+                    $request->return_date,
+                    $request->return_time,
+                    $request->duration_hours ?? 1  // assume same duration for return
+                );
+                if (!$returnAvailable) return false;
+            }
             return true;
         });
+        $distanceCalculator = app(DistanceCalculator::class);
+        $distance = null;
+        if ($request->service_type === 'point_to_point' && $request->filled('from_lat') && $request->filled('to_lat')) {
+            $distance = $distanceCalculator->getDistance(
+                $request->from_lat,
+                $request->from_lng,
+                $request->to_lat,
+                $request->to_lng,
+                'imperial' // or based on org preference
+            );
+        }
 
-        $result = $filtered->values()->map(function ($v) {
+        $result = $filtered->map(function ($v) use ($request, $distance) {
+            $totalPrice = 0;
+            $priceLabel = '';
+            if ($request->service_type === 'hourly') {
+                $totalPrice = $v->price_per_hour * ($request->duration_hours ?? 1);
+                $priceLabel = '/total';
+            } elseif ($request->service_type === 'point_to_point' && $distance) {
+                $totalPrice = $distance * ($v->per_km_price ?? 0);
+                $priceLabel = '/total';
+            } else {
+                // airport transfer – use flat rate or distance?
+                $totalPrice = $v->price; // fallback
+                $priceLabel = '/h';
+            }
             return [
                 'id' => $v->id,
                 'title' => $v->title,
                 'image' => $v->image,
                 'seats' => $v->seats,
                 'price' => $v->price,
+                'per_km_price' => $v->per_km_price,
+                'total_price' => round($totalPrice, 2),
+                'price_label' => $priceLabel,
                 'luggage_capacity' => $v->luggage_capacity,
                 'series' => $v->series ?? $v->model,
+                'hourly_rate' => $v->price,
+
+                // optionally include distance for display
             ];
         });
 
         return response()->json(['vehicles' => $result]);
+    }
+    private function validateLocation($request, $zones, $prefix)
+    {
+        $lat = $request->input($prefix . '_lat');
+        $lng = $request->input($prefix . '_lng');
+        if ($lat && $lng) {
+            return $this->zoneService->validateLocationInZones(['lat' => $lat, 'lng' => $lng], $zones);
+        }
+        return true; // no coordinates means no validation
     }
     public function index()
     {
@@ -293,6 +352,8 @@ class VehicleController extends Controller
                 'city_id' => 'required|exists:cities,id',
                 'zone_ids' => 'nullable|array',
                 'zone_ids.*' => 'exists:zones,id',
+                'price_per_hour' => 'nullable|numeric|min:0',
+
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
