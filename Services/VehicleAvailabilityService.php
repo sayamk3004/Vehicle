@@ -31,7 +31,7 @@ class VehicleAvailabilityService
         $vehicle = Vehicle::findOrfail($vehicleId);
         if (!$vehicle) return false;
 
-        $engagedJobs = JobVehicle::with(['job'])
+        $engagedJobs = JobVehicle::with(['job.jobable'])
             ->where('vehicle_id', $vehicleId)
             ->get();
 

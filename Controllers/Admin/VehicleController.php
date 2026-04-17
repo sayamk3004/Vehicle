@@ -30,14 +30,15 @@ class VehicleController extends Controller
     protected function orgScopedQuery()
     {
         $admin = $this->admin();
+        $base = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at']);
         return $admin?->organization_id
-            ? Vehicle::where('organization_id', $admin->organization_id)
-            : Vehicle::query(); // super-admin: see all
+            ? $base->where('organization_id', $admin->organization_id)
+            : $base; // super-admin: see all
     }
 
     public function index()
     {
-        $vehicles = $this->orgScopedQuery()->get();
+        $vehicles = $this->orgScopedQuery()->latest()->paginate(20);
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,
@@ -52,7 +53,7 @@ class VehicleController extends Controller
             $q->where('status', $status);
         }
 
-        $vehicles = $q->get();
+        $vehicles = $q->latest()->paginate(20);
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,

@@ -58,11 +58,12 @@ class VehicleController extends Controller
     }
     public function list($status)
     {
-        if ($status != 'all') {
-            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->where('status', $status)->get();
-        } else {
-            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
+        $query = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at'])
+            ->where('organization_id', $this->authService->getAuthenticatedUser()->organization_id);
+        if ($status !== 'all') {
+            $query->where('status', $status);
         }
+        $vehicles = $query->latest()->paginate(20);
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles
@@ -209,7 +210,7 @@ class VehicleController extends Controller
     {
         if (!$this->authService->getAuthenticatedUser()) {
             if (Auth::guard('admin')->check()) {
-                $vehicles = Vehicle::all();
+                $vehicles = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at'])->latest()->paginate(20);
 
                 return Inertia::render('Vehicle/Index', [
                     'vehicles' => $vehicles
@@ -217,7 +218,9 @@ class VehicleController extends Controller
             }
             abort(403, 'No Permission');
         } else {
-            $vehicles = Vehicle::where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)->get();
+            $vehicles = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at'])
+                ->where('organization_id', $this->authService->getAuthenticatedUser()->organization_id)
+                ->latest()->paginate(20);
 
             return Inertia::render('Vehicle/Index', [
                 'vehicles' => $vehicles
