@@ -36,6 +36,23 @@ class VehicleController extends Controller
         $this->zoneService = $zoneService;
     }
 
+    protected function nullableNumeric(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return null;
+            }
+        }
+
+        return is_numeric($value) ? $value : null;
+    }
+
 
     public function check(Request $request, $vehicleId)
     {
@@ -270,13 +287,14 @@ class VehicleController extends Controller
                 'reg_num' => [
                     'required',
                 ],
-                'price' => 'required',
+                'price' => 'required|numeric|min:0',
                 'seats' => 'required|integer|min:2', // Ensures seats is at least 2
                 // 'image' => 'required',
-                'mileage' => 'required',
+                'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
-                'year' => 'required',
+                'year' => 'required|integer|min:1900',
+                'per_km_price' => 'nullable|numeric|min:0',
                 'city_id' => 'required|exists:cities,id',
                 'zone_ids' => 'nullable|array',
                 'zone_ids.*' => 'exists:zones,id',
@@ -306,15 +324,15 @@ class VehicleController extends Controller
             $vehicle = Vehicle::findOrfail($id);
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
-            $vehicle->price = $request->price;
-            $vehicle->seats = $request->seats;
-            $vehicle->per_km_price = $request->per_km_price;
+            $vehicle->price = $this->nullableNumeric($request->price);
+            $vehicle->seats = (int) $request->seats;
+            $vehicle->per_km_price = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num = $request->reg_num;
             $vehicle->slug = $slug;
             $vehicle->model = $request->model;
-            $vehicle->year = $request->year;
+            $vehicle->year = (int) $request->year;
             $vehicle->color = $request->color;
-            $vehicle->mileage = $request->mileage;
+            $vehicle->mileage = $this->nullableNumeric($request->mileage);
             $vehicle->city_id = $request->city_id;
 
 
@@ -345,13 +363,14 @@ class VehicleController extends Controller
                 'title' => 'required',
                 'description' => 'required',
                 'reg_num' => 'required|unique:' . Vehicle::class,
-                'price' => 'required',
+                'price' => 'required|numeric|min:0',
                 'seats' => 'required|integer|min:2',
                 'image' => 'required',
-                'mileage' => 'required',
+                'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
-                'year' => 'required',
+                'year' => 'required|integer|min:1900',
+                'per_km_price' => 'nullable|numeric|min:0',
                 'city_id' => 'required|exists:cities,id',
                 'zone_ids' => 'nullable|array',
                 'zone_ids.*' => 'exists:zones,id',
@@ -393,14 +412,14 @@ class VehicleController extends Controller
             $vehicle->organization_id = $user->organization_id;
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
-            $vehicle->price = $request->price;
-            $vehicle->seats = $request->seats;
-            $vehicle->per_km_price = $request->per_km_price;
+            $vehicle->price = $this->nullableNumeric($request->price);
+            $vehicle->seats = (int) $request->seats;
+            $vehicle->per_km_price = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num = $request->reg_num;
             $vehicle->model = $request->model;
-            $vehicle->year = $request->year;
+            $vehicle->year = (int) $request->year;
             $vehicle->color = $request->color;
-            $vehicle->mileage = $request->mileage;
+            $vehicle->mileage = $this->nullableNumeric($request->mileage);
             $vehicle->slug = $slug;
             $vehicle->status = 'active';
             $vehicle->token = $token;

@@ -22,6 +22,23 @@ class VehicleController extends Controller
         protected VehicleAvailabilityService $availabilityService
     ) {}
 
+    protected function nullableNumeric(mixed $value): mixed
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            $value = trim($value);
+
+            if ($value === '') {
+                return null;
+            }
+        }
+
+        return is_numeric($value) ? $value : null;
+    }
+
     protected function admin()
     {
         return Auth::guard('admin')->user();
@@ -101,13 +118,14 @@ class VehicleController extends Controller
                 'title'       => 'required',
                 'description' => 'required',
                 'reg_num'     => 'required|unique:' . Vehicle::class,
-                'price'       => 'required',
+                'price'       => 'required|numeric|min:0',
                 'seats'       => 'required|integer|min:2',
                 'image'       => 'required',
-                'mileage'     => 'required',
+                'mileage'     => 'required|numeric|min:0',
                 'color'       => 'required',
                 'model'       => 'required',
-                'year'        => 'required',
+                'year'        => 'required|integer|min:1900',
+                'per_km_price' => 'nullable|numeric|min:0',
             ]);
 
             $slugBase = Str::slug($request->title, '-');
@@ -122,14 +140,14 @@ class VehicleController extends Controller
             $vehicle->organization_id = NULL;
             $vehicle->title           = $request->title;
             $vehicle->description     = $request->description;
-            $vehicle->price           = $request->price;
-            $vehicle->seats           = $request->seats;
-            $vehicle->per_km_price    = $request->per_km_price;
+            $vehicle->price           = $this->nullableNumeric($request->price);
+            $vehicle->seats           = (int) $request->seats;
+            $vehicle->per_km_price    = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num         = $request->reg_num;
             $vehicle->model           = $request->model;
-            $vehicle->year            = $request->year;
+            $vehicle->year            = (int) $request->year;
             $vehicle->color           = $request->color;
-            $vehicle->mileage         = $request->mileage;
+            $vehicle->mileage         = $this->nullableNumeric($request->mileage);
             $vehicle->slug            = $slug;
             $vehicle->status          = 'active';
 
@@ -157,12 +175,13 @@ class VehicleController extends Controller
                     'required',
                     Rule::unique('vehicles', 'reg_num')->ignore($id),
                 ],
-                'price'   => 'required',
+                'price'   => 'required|numeric|min:0',
                 'seats'   => 'required|integer|min:2',
-                'mileage' => 'required',
+                'mileage' => 'required|numeric|min:0',
                 'color'   => 'required',
                 'model'   => 'required',
-                'year'    => 'required',
+                'year'    => 'required|integer|min:1900',
+                'per_km_price' => 'nullable|numeric|min:0',
             ]);
 
             $vehicle = $this->orgScopedQuery()->findOrFail($id);
@@ -178,15 +197,15 @@ class VehicleController extends Controller
             $vehicle->organization_id = NULL;
             $vehicle->title           = $request->title;
             $vehicle->description     = $request->description;
-            $vehicle->price           = $request->price;
-            $vehicle->seats           = $request->seats;
-            $vehicle->per_km_price    = $request->per_km_price;
+            $vehicle->price           = $this->nullableNumeric($request->price);
+            $vehicle->seats           = (int) $request->seats;
+            $vehicle->per_km_price    = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num         = $request->reg_num;
             $vehicle->slug            = $slug;
             $vehicle->model           = $request->model;
-            $vehicle->year            = $request->year;
+            $vehicle->year            = (int) $request->year;
             $vehicle->color           = $request->color;
-            $vehicle->mileage         = $request->mileage;
+            $vehicle->mileage         = $this->nullableNumeric($request->mileage);
 
             if ($request->hasFile('image')) {
                 $vehicle->image = Helpers::upload('vehicles/', 'webp', $request->file('image'));
