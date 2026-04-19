@@ -351,8 +351,10 @@ class VehicleController extends Controller
                 $vehicle->zoneAssignments()->saveMany($zoneAssignments);
             }
             return redirect()->back()->with('success', 'Vehicle updated successfully.');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (Exception $exception) {
-            return back()->withErrors($exception->getMessage());
+            return back()->withErrors(['status' => 'Failed to update vehicle. Please try again.']);
         }
     }
     public function create(Request $request)
@@ -442,7 +444,7 @@ class VehicleController extends Controller
             return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (Exception $exception) {
             return back()->withErrors([
-                'status' => $exception->getMessage()
+                'status' => 'Failed to create vehicle. Please check your input and try again.'
             ]);
         }
     }
