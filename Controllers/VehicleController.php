@@ -481,6 +481,11 @@ class VehicleController extends Controller
     {
         $vehicle = Vehicle::findOrFail($id);
 
+        $orgId = $this->authService->getAuthenticatedUser()->organization_id;
+        if ($vehicle->organization_id !== $orgId) {
+            abort(403, 'You do not have permission to delete this vehicle.');
+        }
+
 
         foreach ($vehicle->maintenances as $maintenance) {
             if ($maintenance->image) {
