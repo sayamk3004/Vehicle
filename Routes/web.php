@@ -12,10 +12,10 @@ Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.', 'middleware' => ['auth
     // Route::group(['middleware' => ['CheckCreationLimits:vehicle']], function () {
     Route::get('/create', [VehicleController::class, 'add'])->name('add');
     Route::get('/edit-{id}', [VehicleController::class, 'edit'])->name('edit');
-    Route::post('/update-{id}', [VehicleController::class, 'update'])->name('update');
+    Route::match(['post', 'put'], '/update-{id}', [VehicleController::class, 'update'])->name('update');
     Route::post('/create', [VehicleController::class, 'create'])->name('create');
     // });
-    Route::post('/delete-{id}', [VehicleController::class, 'delete'])->name('delete');
+    Route::match(['post', 'delete'], '/delete-{id}', [VehicleController::class, 'delete'])->name('delete');
     Route::get('/view-{id}', [VehicleController::class, 'view'])->name('view');
     Route::put('{id}/status', [VehicleController::class, 'updateStatus'])->name('statusChange');
 
@@ -46,8 +46,8 @@ Route::middleware(['auth:admin'])
 
             // edit/update/view/delete
             Route::get('/edit-{id}', [AdminVehicleController::class, 'edit'])->name('edit');
-            Route::post('/update-{id}', [AdminVehicleController::class, 'update'])->name('update');
-            Route::post('/delete-{id}', [AdminVehicleController::class, 'delete'])->name('delete');
+            Route::match(['post', 'put'], '/update-{id}', [AdminVehicleController::class, 'update'])->name('update');
+            Route::match(['post', 'delete'], '/delete-{id}', [AdminVehicleController::class, 'delete'])->name('delete');
             Route::get('/view-{id}', [AdminVehicleController::class, 'view'])->name('view');
 
             // status change

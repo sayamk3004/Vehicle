@@ -59,6 +59,7 @@ class VehicleController extends Controller
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,
+            'routeBase' => 'admin.vehicle',
         ]);
     }
 
@@ -74,6 +75,7 @@ class VehicleController extends Controller
 
         return Inertia::render('Vehicle/Index', [
             'vehicles' => $vehicles,
+            'routeBase' => 'admin.vehicle',
         ]);
     }
 
@@ -108,6 +110,8 @@ class VehicleController extends Controller
 
         return Inertia::render('Admin/Vehicle/Edit', [
             'vehicle' => $vehicle,
+            'routeBase' => 'admin.vehicle',
+            'redirectUrl' => route('admin.vehicle.index'),
         ]);
     }
 

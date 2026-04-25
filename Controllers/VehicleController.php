@@ -83,7 +83,8 @@ class VehicleController extends Controller
         $vehicles = $query->latest()->paginate(20);
 
         return Inertia::render('Vehicle/Index', [
-            'vehicles' => $vehicles
+            'vehicles' => $vehicles,
+            'routeBase' => 'vehicle',
         ]);
     }
     public function fetch($slug)
@@ -230,7 +231,8 @@ class VehicleController extends Controller
                 $vehicles = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at'])->latest()->paginate(20);
 
                 return Inertia::render('Vehicle/Index', [
-                    'vehicles' => $vehicles
+                    'vehicles' => $vehicles,
+                    'routeBase' => 'vehicle',
                 ]);
             }
             abort(403, 'No Permission');
@@ -240,7 +242,8 @@ class VehicleController extends Controller
                 ->latest()->paginate(20);
 
             return Inertia::render('Vehicle/Index', [
-                'vehicles' => $vehicles
+                'vehicles' => $vehicles,
+                'routeBase' => 'vehicle',
             ]);
         }
     }
@@ -276,6 +279,8 @@ class VehicleController extends Controller
             'vehicle' => $vehicle,
             'cities' => $cities,
             'zones' => $zones,
+            'routeBase' => 'vehicle',
+            'redirectUrl' => route('vehicle.index'),
         ]);
     }
     public function update(Request $request, $id)
