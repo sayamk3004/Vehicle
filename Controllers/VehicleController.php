@@ -3,6 +3,7 @@
 namespace App\Modules\Vehicle\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Booking\Models\PricingTemplate;
 use App\Modules\Shared\Contracts\AuthContract;
 use App\Modules\Shared\Helpers\Helpers;
 use App\Modules\Shared\Models\City;
@@ -13,6 +14,7 @@ use App\Modules\Shared\Models\Zone;
 use App\Modules\Shared\Models\ZoneAssignment;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
 use App\Services\DistanceCalculator;
+use App\Services\PricingEngine;
 use App\Services\ZoneService;
 use Inertia\Inertia;
 use Exception;
@@ -121,6 +123,7 @@ class VehicleController extends Controller
 
         $vehicles = Vehicle::where('organization_id', $organization->id)
             ->where('status', 'active')
+            ->with('pricingTemplate')
             ->get();
         $isRoundTrip = $request->filled('return_date');
 
@@ -182,34 +185,41 @@ class VehicleController extends Controller
             );
         }
 
-        $result = $filtered->map(function ($v) use ($request, $distance) {
+        $pricingEngine = app(PricingEngine::class);
+
+        $result = $filtered->map(function ($v) use ($request, $distance, $pricingEngine) {
+            $hours      = (float) ($request->duration_hours ?? 1);
             $totalPrice = 0;
             $priceLabel = '';
+
             if ($request->service_type === 'hourly') {
-                $totalPrice = $v->price_per_hour * ($request->duration_hours ?? 1);
+                $est        = $pricingEngine->estimateForVehicle($v, $hours);
+                $totalPrice = $est['estimated_price'];
                 $priceLabel = '/total';
             } elseif ($request->service_type === 'point_to_point' && $distance) {
                 $totalPrice = $distance * ($v->per_km_price ?? 0);
                 $priceLabel = '/total';
             } else {
-                // airport transfer – use flat rate or distance?
-                $totalPrice = $v->price; // fallback
-                $priceLabel = '/h';
+                // airport transfer — use minimum_charge from template, else flat price
+                $est        = $pricingEngine->estimateForVehicle($v, $hours);
+                $totalPrice = $est['minimum_charge'] > 0 ? $est['minimum_charge'] : ($v->price ?? 0);
+                $priceLabel = '/trip';
             }
-            return [
-                'id' => $v->id,
-                'title' => $v->title,
-                'image' => $v->image,
-                'seats' => $v->seats,
-                'price' => $v->price,
-                'per_km_price' => $v->per_km_price,
-                'total_price' => round($totalPrice, 2),
-                'price_label' => $priceLabel,
-                'luggage_capacity' => $v->luggage_capacity,
-                'series' => $v->series ?? $v->model,
-                'hourly_rate' => $v->price,
 
-                // optionally include distance for display
+            $vehicleEst = $pricingEngine->estimateForVehicle($v, 1);
+
+            return [
+                'id'               => $v->id,
+                'title'            => $v->title,
+                'image'            => $v->image,
+                'seats'            => $v->seats,
+                'price'            => $v->price,
+                'per_km_price'     => $v->per_km_price,
+                'total_price'      => round($totalPrice, 2),
+                'price_label'      => $priceLabel,
+                'luggage_capacity' => $v->luggage_capacity,
+                'series'           => $v->series ?? $v->model,
+                'hourly_rate'      => $vehicleEst['hourly_rate'],
             ];
         });
 
@@ -259,27 +269,31 @@ class VehicleController extends Controller
     {
         $orgId = $request->user()->organization_id;
 
-        $cities = City::orderBy('name')->get();
-        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $cities    = City::orderBy('name')->get();
+        $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $templates = PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Create', [
-            'cities' => $cities,
-            'zones' => $zones,
+            'cities'    => $cities,
+            'zones'     => $zones,
+            'templates' => $templates,
         ]);
     }
     public function edit($id)
     {
-        $vehicle = Vehicle::with('zoneAssignments')->findOrFail($id);
+        $vehicle = Vehicle::with(['zoneAssignments', 'pricingTemplate'])->findOrFail($id);
 
-        $orgId = $vehicle->organization_id;
-        $cities = City::orderBy('name')->get();
-        $zones = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $orgId     = $vehicle->organization_id;
+        $cities    = City::orderBy('name')->get();
+        $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $templates = PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Edit', [
-            'vehicle' => $vehicle,
-            'cities' => $cities,
-            'zones' => $zones,
-            'routeBase' => 'vehicle',
+            'vehicle'     => $vehicle,
+            'cities'      => $cities,
+            'zones'       => $zones,
+            'templates'   => $templates,
+            'routeBase'   => 'vehicle',
             'redirectUrl' => route('vehicle.index'),
         ]);
     }
@@ -299,10 +313,11 @@ class VehicleController extends Controller
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
-                'per_km_price' => 'nullable|numeric|min:0',
-                'city_id' => 'required|exists:cities,id',
-                'zone_ids' => 'nullable|array',
-                'zone_ids.*' => 'exists:zones,id',
+                'per_km_price'         => 'nullable|numeric|min:0',
+                'city_id'              => 'required|exists:cities,id',
+                'zone_ids'             => 'nullable|array',
+                'zone_ids.*'           => 'exists:zones,id',
+                'pricing_template_id'  => 'nullable|integer',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -339,6 +354,7 @@ class VehicleController extends Controller
             $vehicle->color = $request->color;
             $vehicle->mileage = $this->nullableNumeric($request->mileage);
             $vehicle->city_id = $request->city_id;
+            $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
 
 
             if ($request->has('image') && $request->image != '') {
@@ -377,12 +393,12 @@ class VehicleController extends Controller
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
-                'per_km_price' => 'nullable|numeric|min:0',
-                'city_id' => 'required|exists:cities,id',
-                'zone_ids' => 'nullable|array',
-                'zone_ids.*' => 'exists:zones,id',
-                'price_per_hour' => 'nullable|numeric|min:0',
-
+                'per_km_price'        => 'nullable|numeric|min:0',
+                'city_id'             => 'required|exists:cities,id',
+                'zone_ids'            => 'nullable|array',
+                'zone_ids.*'          => 'exists:zones,id',
+                'price_per_hour'      => 'nullable|numeric|min:0',
+                'pricing_template_id' => 'nullable|integer',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -431,6 +447,7 @@ class VehicleController extends Controller
             $vehicle->status = 'active';
             $vehicle->token = $token;
             $vehicle->city_id = $request->city_id;
+            $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
             $image_name = null;
             if ($request->has('image')) {
                 $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
