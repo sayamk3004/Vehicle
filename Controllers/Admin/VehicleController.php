@@ -122,14 +122,12 @@ class VehicleController extends Controller
                 'title'       => 'required',
                 'description' => 'required',
                 'reg_num'     => 'required|unique:' . Vehicle::class,
-                'price'       => 'required|numeric|min:0',
                 'seats'       => 'required|integer|min:2',
                 'image'       => 'required',
                 'mileage'     => 'required|numeric|min:0',
                 'color'       => 'required',
                 'model'       => 'required',
                 'year'        => 'required|integer|min:1900',
-                'per_km_price' => 'nullable|numeric|min:0',
             ]);
 
             $slugBase = Str::slug($request->title, '-');
@@ -144,9 +142,7 @@ class VehicleController extends Controller
             $vehicle->organization_id = NULL;
             $vehicle->title           = $request->title;
             $vehicle->description     = $request->description;
-            $vehicle->price           = $this->nullableNumeric($request->price);
             $vehicle->seats           = (int) $request->seats;
-            $vehicle->per_km_price    = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num         = $request->reg_num;
             $vehicle->model           = $request->model;
             $vehicle->year            = (int) $request->year;
@@ -179,13 +175,11 @@ class VehicleController extends Controller
                     'required',
                     Rule::unique('vehicles', 'reg_num')->ignore($id),
                 ],
-                'price'   => 'required|numeric|min:0',
                 'seats'   => 'required|integer|min:2',
                 'mileage' => 'required|numeric|min:0',
                 'color'   => 'required',
                 'model'   => 'required',
                 'year'    => 'required|integer|min:1900',
-                'per_km_price' => 'nullable|numeric|min:0',
             ]);
 
             $vehicle = $this->orgScopedQuery()->findOrFail($id);
@@ -201,9 +195,7 @@ class VehicleController extends Controller
             $vehicle->organization_id = NULL;
             $vehicle->title           = $request->title;
             $vehicle->description     = $request->description;
-            $vehicle->price           = $this->nullableNumeric($request->price);
             $vehicle->seats           = (int) $request->seats;
-            $vehicle->per_km_price    = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num         = $request->reg_num;
             $vehicle->slug            = $slug;
             $vehicle->model           = $request->model;

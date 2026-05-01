@@ -197,12 +197,14 @@ class VehicleController extends Controller
                 $totalPrice = $est['estimated_price'];
                 $priceLabel = '/total';
             } elseif ($request->service_type === 'point_to_point' && $distance) {
-                $totalPrice = $distance * ($v->per_km_price ?? 0);
+                $totalPrice = $v->pricingTemplate
+                    ? $pricingEngine->calculate($v->pricingTemplate, ['distance' => $distance])
+                    : 0;
                 $priceLabel = '/total';
             } else {
-                // airport transfer — use minimum_charge from template, else flat price
+                // airport transfer
                 $est        = $pricingEngine->estimateForVehicle($v, $hours);
-                $totalPrice = $est['minimum_charge'] > 0 ? $est['minimum_charge'] : ($v->price ?? 0);
+                $totalPrice = $est['minimum_charge'] > 0 ? $est['minimum_charge'] : $est['estimated_price'];
                 $priceLabel = '/trip';
             }
 
@@ -213,8 +215,6 @@ class VehicleController extends Controller
                 'title'            => $v->title,
                 'image'            => $v->image,
                 'seats'            => $v->seats,
-                'price'            => $v->price,
-                'per_km_price'     => $v->per_km_price,
                 'total_price'      => round($totalPrice, 2),
                 'price_label'      => $priceLabel,
                 'luggage_capacity' => $v->luggage_capacity,
@@ -306,14 +306,12 @@ class VehicleController extends Controller
                 'reg_num' => [
                     'required',
                 ],
-                'price' => 'required|numeric|min:0',
                 'seats' => 'required|integer|min:2', // Ensures seats is at least 2
                 // 'image' => 'required',
                 'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
-                'per_km_price'         => 'nullable|numeric|min:0',
                 'city_id'              => 'required|exists:cities,id',
                 'zone_ids'             => 'nullable|array',
                 'zone_ids.*'           => 'exists:zones,id',
@@ -323,7 +321,6 @@ class VehicleController extends Controller
                 'description.required' => 'Description is required',
                 'reg_num.required' => 'Registration number is required',
                 'reg_num.unique' => 'Registration number is already taken',
-                'price.required' => 'Price is required',
                 'seats.required' => 'Seats is required',
                 'seats.integer' => 'Seats must be a valid number',
                 'seats.min' => 'Seats must be at least 2',
@@ -344,9 +341,7 @@ class VehicleController extends Controller
             $vehicle = Vehicle::findOrfail($id);
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
-            $vehicle->price = $this->nullableNumeric($request->price);
             $vehicle->seats = (int) $request->seats;
-            $vehicle->per_km_price = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num = $request->reg_num;
             $vehicle->slug = $slug;
             $vehicle->model = $request->model;
@@ -386,18 +381,15 @@ class VehicleController extends Controller
                 'title' => 'required',
                 'description' => 'required',
                 'reg_num' => 'required|unique:' . Vehicle::class,
-                'price' => 'required|numeric|min:0',
                 'seats' => 'required|integer|min:2',
                 'image' => 'required',
                 'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
-                'per_km_price'        => 'nullable|numeric|min:0',
                 'city_id'             => 'required|exists:cities,id',
                 'zone_ids'            => 'nullable|array',
                 'zone_ids.*'          => 'exists:zones,id',
-                'price_per_hour'      => 'nullable|numeric|min:0',
                 'pricing_template_id' => 'nullable|integer',
             ], [
                 'title.required' => 'Title is required',
@@ -435,9 +427,7 @@ class VehicleController extends Controller
             $vehicle->organization_id = $user->organization_id;
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
-            $vehicle->price = $this->nullableNumeric($request->price);
             $vehicle->seats = (int) $request->seats;
-            $vehicle->per_km_price = $this->nullableNumeric($request->per_km_price);
             $vehicle->reg_num = $request->reg_num;
             $vehicle->model = $request->model;
             $vehicle->year = (int) $request->year;
