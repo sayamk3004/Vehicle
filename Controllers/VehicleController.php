@@ -59,10 +59,12 @@ class VehicleController extends Controller
     public function check(Request $request, $vehicleId)
     {
         $request->validate([
-            'date' => 'required|date',
-            'time' => 'required',
-            'duration' => 'nullable|integer|min:1',
-            'timezone' => 'nullable|string',
+            'date'                => 'required|date',
+            'time'                => 'required',
+            'duration'            => 'nullable|integer|min:1',
+            'timezone'            => 'nullable|string',
+            'buffer_time_minutes' => 'nullable|integer|min:0|max:1440',
+            'max_bookings_per_day' => 'nullable|integer|min:1|max:999',
         ]);
 
         $available = $this->availabilityService->isAvailable(
@@ -70,7 +72,9 @@ class VehicleController extends Controller
             $request->date,
             $request->time,
             $request->duration ?? 1,
-            []
+            [],
+            (int) ($request->buffer_time_minutes ?? 0),
+            $request->filled('max_bookings_per_day') ? (int) $request->max_bookings_per_day : null
         );
 
         return response()->json(['available' => $available]);
