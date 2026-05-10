@@ -3,7 +3,9 @@
 namespace App\Modules\Vehicle\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Booking\Models\LimousineService;
 use App\Modules\Booking\Models\PricingTemplate;
+use App\Modules\Booking\Models\PrivateTour;
 use App\Modules\Shared\Contracts\AuthContract;
 use App\Modules\Shared\Helpers\Helpers;
 use App\Modules\Shared\Models\City;
@@ -472,21 +474,26 @@ class VehicleController extends Controller
 
         $vehicle = Vehicle::findOrFail($id);
 
-        $today = now()->toDateString();
-        // if ($request->input('status') == 'paused') {
+        if ($request->input('status') === 'paused') {
+            $activeTours = PrivateTour::where('vehicle_id', $vehicle->id)
+                ->whereHas('service', fn ($q) => $q->where('status', 'published'))
+                ->with('service:id,serviceable_id,serviceable_type,title')
+                ->get();
 
-        //     $hasFutureJobs = JobVehicle::where('vehicle_id', $vehicle->id)
-        //         ->whereHas('job', function ($query) use ($today) {
-        //             $query->whereNull('deleted_at')
-        //                 ->whereHas('jobable', function ($jobableQuery) use ($today) {
-        //                     $jobableQuery->whereNull('deleted_at')->whereDate('date', '>=', $today);
-        //                 });
-        //         })->exists();
+            $activeLimos = LimousineService::where('vehicle_id', $vehicle->id)
+                ->whereHas('service', fn ($q) => $q->where('status', 'published'))
+                ->with('service:id,serviceable_id,serviceable_type,title')
+                ->get();
 
-        //     if ($hasFutureJobs) {
-        //         return back()->withErrors(['error' => 'Vehicle cannot be paused as it has scheduled jobs.']);
-        //     }
-        // }
+            $conflicting = $activeTours->merge($activeLimos);
+
+            if ($conflicting->isNotEmpty()) {
+                $names = $conflicting->map(fn ($s) => optional($s->service)->title ?? 'Untitled')->implode(', ');
+                return back()->withErrors([
+                    'status' => "Cannot pause this vehicle — it is assigned to active service(s): {$names}. Please reassign or deactivate those services first.",
+                ]);
+            }
+        }
 
         $vehicle->status = $request->input('status');
         $vehicle->save();
