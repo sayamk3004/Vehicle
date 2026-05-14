@@ -3,9 +3,6 @@
 namespace App\Modules\Vehicle\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Booking\Models\LimousineService;
-use App\Modules\Booking\Models\PricingTemplate;
-use App\Modules\Booking\Models\PrivateTour;
 use App\Modules\Shared\Contracts\AuthContract;
 use App\Modules\Shared\Helpers\Helpers;
 use App\Modules\Shared\Models\City;
@@ -277,7 +274,7 @@ class VehicleController extends Controller
 
         $cities    = City::orderBy('name')->get();
         $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates = PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $templates = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Create', [
             'cities'    => $cities,
@@ -288,11 +285,12 @@ class VehicleController extends Controller
     public function edit($id)
     {
         $vehicle = Vehicle::with(['zoneAssignments', 'pricingTemplate'])->findOrFail($id);
+        abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
         $orgId     = $vehicle->organization_id;
         $cities    = City::orderBy('name')->get();
         $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates = PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $templates = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Edit', [
             'vehicle'     => $vehicle,
@@ -345,6 +343,7 @@ class VehicleController extends Controller
                 $slug = Str::slug($request->title, '-');
             }
             $vehicle = Vehicle::findOrfail($id);
+            abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
             $vehicle->title = $request->title;
             $vehicle->description = $request->description;
             $vehicle->seats = (int) $request->seats;
@@ -473,14 +472,15 @@ class VehicleController extends Controller
         ]);
 
         $vehicle = Vehicle::findOrFail($id);
+        abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
         if ($request->input('status') === 'paused') {
-            $activeTours = PrivateTour::where('vehicle_id', $vehicle->id)
+            $activeTours = \App\Modules\Booking\Models\PrivateTour::where('vehicle_id', $vehicle->id)
                 ->whereHas('service', fn ($q) => $q->where('status', 'published'))
                 ->with('service:id,serviceable_id,serviceable_type,title')
                 ->get();
 
-            $activeLimos = LimousineService::where('vehicle_id', $vehicle->id)
+            $activeLimos = \App\Modules\Booking\Models\LimousineService::where('vehicle_id', $vehicle->id)
                 ->whereHas('service', fn ($q) => $q->where('status', 'published'))
                 ->with('service:id,serviceable_id,serviceable_type,title')
                 ->get();
