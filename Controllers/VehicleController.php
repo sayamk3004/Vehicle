@@ -18,6 +18,7 @@ use App\Services\ZoneService;
 use Inertia\Inertia;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Storage;
@@ -325,7 +326,7 @@ class VehicleController extends Controller
                 'zone_ids'             => 'nullable|array',
                 'zone_ids.*'           => 'exists:zones,id',
                 'pricing_template_id'  => 'nullable|integer',
-                'vehicle_type_id'      => 'nullable|integer|exists:vehicle_types,id',
+                'vehicle_type_id'      => ['nullable', 'integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -402,7 +403,7 @@ class VehicleController extends Controller
                 'zone_ids'            => 'nullable|array',
                 'zone_ids.*'          => 'exists:zones,id',
                 'pricing_template_id' => 'nullable|integer',
-                'vehicle_type_id'     => 'nullable|integer|exists:vehicle_types,id',
+                'vehicle_type_id'     => ['nullable', 'integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
