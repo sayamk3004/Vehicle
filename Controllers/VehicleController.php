@@ -80,7 +80,8 @@ class VehicleController extends Controller
     }
     public function list($status)
     {
-        $query = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'created_at'])
+        $query = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'vehicle_type_id', 'created_at'])
+            ->with('vehicleType:id,name')
             ->where('organization_id', $this->authService->getAuthenticatedUser()->organization_id);
         if ($status !== 'all') {
             $query->where('status', $status);
@@ -272,14 +273,16 @@ class VehicleController extends Controller
     {
         $orgId = $request->user()->organization_id;
 
-        $cities    = City::orderBy('name')->get();
-        $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $cities       = City::orderBy('name')->get();
+        $zones        = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $templates    = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $vehicleTypes = \App\Modules\Booking\Models\VehicleType::whereNull('organization_id')->where('is_active', true)->orderBy('sort_order')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Create', [
-            'cities'    => $cities,
-            'zones'     => $zones,
-            'templates' => $templates,
+            'cities'       => $cities,
+            'zones'        => $zones,
+            'templates'    => $templates,
+            'vehicleTypes' => $vehicleTypes,
         ]);
     }
     public function edit($id)
@@ -287,18 +290,20 @@ class VehicleController extends Controller
         $vehicle = Vehicle::with(['zoneAssignments', 'pricingTemplate'])->findOrFail($id);
         abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
-        $orgId     = $vehicle->organization_id;
-        $cities    = City::orderBy('name')->get();
-        $zones     = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $orgId        = $vehicle->organization_id;
+        $cities       = City::orderBy('name')->get();
+        $zones        = Zone::where('organization_id', $orgId)->orderBy('name')->get();
+        $templates    = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
+        $vehicleTypes = \App\Modules\Booking\Models\VehicleType::whereNull('organization_id')->where('is_active', true)->orderBy('sort_order')->get(['id', 'name']);
 
         return Inertia::render('Vehicle/Edit', [
-            'vehicle'     => $vehicle,
-            'cities'      => $cities,
-            'zones'       => $zones,
-            'templates'   => $templates,
-            'routeBase'   => 'vehicle',
-            'redirectUrl' => route('vehicle.index'),
+            'vehicle'      => $vehicle,
+            'cities'       => $cities,
+            'zones'        => $zones,
+            'templates'    => $templates,
+            'vehicleTypes' => $vehicleTypes,
+            'routeBase'    => 'vehicle',
+            'redirectUrl'  => route('vehicle.index'),
         ]);
     }
     public function update(Request $request, $id)
@@ -320,6 +325,7 @@ class VehicleController extends Controller
                 'zone_ids'             => 'nullable|array',
                 'zone_ids.*'           => 'exists:zones,id',
                 'pricing_template_id'  => 'nullable|integer',
+                'vehicle_type_id'      => 'nullable|integer|exists:vehicle_types,id',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -355,7 +361,7 @@ class VehicleController extends Controller
             $vehicle->mileage = $this->nullableNumeric($request->mileage);
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
-
+            $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
 
             if ($request->has('image') && $request->image != '') {
                 $image_name = null;
@@ -396,6 +402,7 @@ class VehicleController extends Controller
                 'zone_ids'            => 'nullable|array',
                 'zone_ids.*'          => 'exists:zones,id',
                 'pricing_template_id' => 'nullable|integer',
+                'vehicle_type_id'     => 'nullable|integer|exists:vehicle_types,id',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -443,6 +450,7 @@ class VehicleController extends Controller
             $vehicle->token = $token;
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
+            $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
             $image_name = null;
             if ($request->has('image')) {
                 $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
