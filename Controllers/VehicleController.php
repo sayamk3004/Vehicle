@@ -81,7 +81,7 @@ class VehicleController extends Controller
     public function list($status)
     {
         $query = Vehicle::select(['id', 'organization_id', 'title', 'reg_num', 'mileage', 'seats', 'image', 'status', 'vehicle_type_id', 'created_at'])
-            ->with('vehicleType:id,name')
+            ->with(['vehicleType:id,name', 'vehicleTypes:id,name'])
             ->where('organization_id', $this->authService->getAuthenticatedUser()->organization_id);
         if ($status !== 'all') {
             $query->where('status', $status);
@@ -287,7 +287,7 @@ class VehicleController extends Controller
     }
     public function edit($id)
     {
-        $vehicle = Vehicle::with(['zoneAssignments', 'pricingTemplate'])->findOrFail($id);
+        $vehicle = Vehicle::with(['zoneAssignments', 'pricingTemplate', 'vehicleTypes:id'])->findOrFail($id);
         abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
         $orgId        = $vehicle->organization_id;
@@ -325,7 +325,8 @@ class VehicleController extends Controller
                 'zone_ids'             => 'nullable|array',
                 'zone_ids.*'           => 'exists:zones,id',
                 'pricing_template_id'  => 'nullable|integer',
-                'vehicle_type_id'      => ['nullable', 'integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
+                'vehicle_type_ids'     => 'nullable|array',
+                'vehicle_type_ids.*'   => ['integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -361,7 +362,13 @@ class VehicleController extends Controller
             $vehicle->mileage = $this->nullableNumeric($request->mileage);
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
-            $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
+
+            $typeIds = collect($request->input('vehicle_type_ids', []))
+                ->filter(fn ($id) => is_numeric($id))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+            $vehicle->vehicle_type_id = $typeIds->first();
 
             if ($request->has('image') && $request->image != '') {
                 $image_name = null;
@@ -369,6 +376,7 @@ class VehicleController extends Controller
                 $vehicle->image = $image_name;
             }
             $vehicle->save();
+            $vehicle->vehicleTypes()->sync($typeIds->all());
             $vehicle->zoneAssignments()->delete();
             if ($request->filled('zone_ids')) {
                 $zoneAssignments = [];
@@ -402,7 +410,8 @@ class VehicleController extends Controller
                 'zone_ids'            => 'nullable|array',
                 'zone_ids.*'          => 'exists:zones,id',
                 'pricing_template_id' => 'nullable|integer',
-                'vehicle_type_id'     => ['nullable', 'integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
+                'vehicle_type_ids'    => 'nullable|array',
+                'vehicle_type_ids.*'  => ['integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -450,13 +459,21 @@ class VehicleController extends Controller
             $vehicle->token = $token;
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
-            $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
+
+            $typeIds = collect($request->input('vehicle_type_ids', []))
+                ->filter(fn ($id) => is_numeric($id))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values();
+            $vehicle->vehicle_type_id = $typeIds->first();
+
             $image_name = null;
             if ($request->has('image')) {
                 $image_name = Helpers::upload('vehicles/', 'webp', $request->file('image'));
             }
             $vehicle->image = $image_name;
             $vehicle->save();
+            $vehicle->vehicleTypes()->sync($typeIds->all());
             if ($request->filled('zone_ids')) {
                 $zoneAssignments = [];
                 foreach ($request->zone_ids as $zoneId) {
