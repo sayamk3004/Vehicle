@@ -3,6 +3,7 @@
 namespace App\Modules\Vehicle\Models;
 
 use App\Modules\Booking\Models\City;
+use App\Modules\Booking\Models\JobCategory;
 use App\Modules\Booking\Models\PricingTemplate;
 use App\Modules\Booking\Models\VehicleType;
 use App\Modules\Shared\Models\Job;
@@ -86,6 +87,22 @@ class Vehicle extends Model
             'vehicle_vehicle_type',
             'vehicle_id',
             'vehicle_type_id'
+        )->withTimestamps();
+    }
+
+    /**
+     * Job categories a vehicle is configured to serve (airport, hotel, sightseeing, etc.).
+     * Many-to-many — a vehicle can serve multiple categories, and a category can be
+     * served by multiple vehicles. The booking flow filters available vehicles by
+     * the customer's selected job category.
+     */
+    public function jobCategories()
+    {
+        return $this->belongsToMany(
+            JobCategory::class,
+            'vehicle_job_category',
+            'vehicle_id',
+            'job_category_id'
         )->withTimestamps();
     }
 
