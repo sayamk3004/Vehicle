@@ -3,12 +3,15 @@
 namespace App\Modules\Vehicle\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Booking\Contracts\PricingTemplateReader;
+use App\Modules\Booking\Contracts\VehicleAssignmentReader;
+use App\Modules\Booking\Contracts\VehicleTypeReader;
 use App\Modules\Shared\Contracts\AuthContract;
 use App\Modules\Shared\Helpers\Helpers;
-use App\Modules\Shared\Models\City;
-use App\Modules\Shared\Models\JobVehicle;
+use App\Modules\Booking\Models\City;
+use App\Modules\Vehicle\Models\JobVehicle;
 use App\Modules\Shared\Models\Organization;
-use App\Modules\Shared\Models\Vehicle;
+use App\Modules\Vehicle\Models\Vehicle;
 use App\Modules\Shared\Models\Zone;
 use App\Modules\Shared\Models\ZoneAssignment;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
@@ -29,12 +32,24 @@ class VehicleController extends Controller
     protected $authService;
     protected $availabilityService;
     protected $zoneService;
+    protected VehicleTypeReader $vehicleTypes;
+    protected PricingTemplateReader $pricingTemplates;
+    protected VehicleAssignmentReader $vehicleAssignments;
 
-    public function __construct(AuthContract $authService, VehicleAvailabilityService $availabilityService, ZoneService $zoneService)
-    {
+    public function __construct(
+        AuthContract $authService,
+        VehicleAvailabilityService $availabilityService,
+        ZoneService $zoneService,
+        VehicleTypeReader $vehicleTypes,
+        PricingTemplateReader $pricingTemplates,
+        VehicleAssignmentReader $vehicleAssignments,
+    ) {
         $this->authService = $authService;
         $this->availabilityService = $availabilityService;
         $this->zoneService = $zoneService;
+        $this->vehicleTypes = $vehicleTypes;
+        $this->pricingTemplates = $pricingTemplates;
+        $this->vehicleAssignments = $vehicleAssignments;
     }
 
     protected function nullableNumeric(mixed $value): mixed
@@ -275,8 +290,8 @@ class VehicleController extends Controller
 
         $cities       = City::orderBy('name')->get();
         $zones        = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates    = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
-        $vehicleTypes = \App\Modules\Booking\Models\VehicleType::whereNull('organization_id')->where('is_active', true)->orderBy('sort_order')->get(['id', 'name']);
+        $templates    = $this->pricingTemplates->listForOrganization($orgId);
+        $vehicleTypes = $this->vehicleTypes->listActiveGlobal();
 
         return Inertia::render('Vehicle/Create', [
             'cities'       => $cities,
@@ -293,8 +308,8 @@ class VehicleController extends Controller
         $orgId        = $vehicle->organization_id;
         $cities       = City::orderBy('name')->get();
         $zones        = Zone::where('organization_id', $orgId)->orderBy('name')->get();
-        $templates    = \App\Modules\Booking\Models\PricingTemplate::where('organization_id', $orgId)->orderBy('name')->get(['id', 'name']);
-        $vehicleTypes = \App\Modules\Booking\Models\VehicleType::whereNull('organization_id')->where('is_active', true)->orderBy('sort_order')->get(['id', 'name']);
+        $templates    = $this->pricingTemplates->listForOrganization($orgId);
+        $vehicleTypes = $this->vehicleTypes->listActiveGlobal();
 
         return Inertia::render('Vehicle/Edit', [
             'vehicle'      => $vehicle,
@@ -326,7 +341,7 @@ class VehicleController extends Controller
                 'zone_ids.*'           => 'exists:zones,id',
                 'pricing_template_id'  => 'nullable|integer',
                 'vehicle_type_ids'     => 'nullable|array',
-                'vehicle_type_ids.*'   => ['integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
+                'vehicle_type_ids.*'   => ['integer', $this->vehicleTypes->existsRule()],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -411,7 +426,7 @@ class VehicleController extends Controller
                 'zone_ids.*'          => 'exists:zones,id',
                 'pricing_template_id' => 'nullable|integer',
                 'vehicle_type_ids'    => 'nullable|array',
-                'vehicle_type_ids.*'  => ['integer', Rule::exists(\App\Modules\Booking\Models\VehicleType::class, 'id')],
+                'vehicle_type_ids.*'  => ['integer', $this->vehicleTypes->existsRule()],
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -500,20 +515,10 @@ class VehicleController extends Controller
         abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
         if ($request->input('status') === 'paused') {
-            $activeTours = \App\Modules\Booking\Models\PrivateTour::where('vehicle_id', $vehicle->id)
-                ->whereHas('service', fn ($q) => $q->where('status', 'published'))
-                ->with('service:id,serviceable_id,serviceable_type,title')
-                ->get();
+            $conflictingTitles = $this->vehicleAssignments->activeServiceTitlesForVehicle($vehicle->id);
 
-            $activeLimos = \App\Modules\Booking\Models\LimousineService::where('vehicle_id', $vehicle->id)
-                ->whereHas('service', fn ($q) => $q->where('status', 'published'))
-                ->with('service:id,serviceable_id,serviceable_type,title')
-                ->get();
-
-            $conflicting = $activeTours->merge($activeLimos);
-
-            if ($conflicting->isNotEmpty()) {
-                $names = $conflicting->map(fn ($s) => optional($s->service)->title ?? 'Untitled')->implode(', ');
+            if (!empty($conflictingTitles)) {
+                $names = implode(', ', $conflictingTitles);
                 return back()->withErrors([
                     'status' => "Cannot pause this vehicle — it is assigned to active service(s): {$names}. Please reassign or deactivate those services first.",
                 ]);

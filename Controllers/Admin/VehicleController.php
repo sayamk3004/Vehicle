@@ -4,9 +4,9 @@ namespace App\Modules\Vehicle\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Shared\Helpers\Helpers;
-use App\Modules\Shared\Models\JobVehicle;
+use App\Modules\Vehicle\Models\JobVehicle;
 use App\Modules\Shared\Models\Organization;
-use App\Modules\Shared\Models\Vehicle;
+use App\Modules\Vehicle\Models\Vehicle;
 use App\Modules\Vehicle\Services\VehicleAvailabilityService;
 use Exception;
 use Illuminate\Http\Request;

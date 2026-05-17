@@ -2,12 +2,13 @@
 
 namespace App\Modules\Vehicle\Services;
 
-use App\Modules\Shared\Models\Vehicle;
-use App\Modules\Shared\Models\JobVehicle;
+use App\Modules\Vehicle\Models\Vehicle;
+use App\Modules\Vehicle\Models\JobVehicle;
+use App\Modules\Vehicle\Contracts\VehicleAvailabilityChecker;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
-class VehicleAvailabilityService
+class VehicleAvailabilityService implements VehicleAvailabilityChecker
 {
     /**
      * Check if a vehicle is available for the requested date/time.
