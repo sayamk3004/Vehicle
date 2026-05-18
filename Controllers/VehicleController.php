@@ -340,7 +340,9 @@ class VehicleController extends Controller
                     'required',
                 ],
                 'seats' => 'required|integer|min:2', // Ensures seats is at least 2
-                // 'image' => 'required',
+                // Update keeps existing image when not re-uploaded; if a new
+                // file IS sent, the same caps as create() apply.
+                'image' => 'nullable|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
                 'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
@@ -432,7 +434,10 @@ class VehicleController extends Controller
                 'description' => 'required',
                 'reg_num' => 'required|unique:' . Vehicle::class,
                 'seats' => 'required|integer|min:2',
-                'image' => 'required',
+                // Required for create; converted to webp by Helpers::upload.
+                // 5 MB cap + dimensions guard so the upload pipeline can't be
+                // weaponised to fill disk or OOM the image converter.
+                'image' => 'required|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
                 'mileage' => 'required|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',

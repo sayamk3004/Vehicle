@@ -7,6 +7,7 @@ use App\Modules\Vehicle\Contracts\VehicleAvailabilityChecker;
 use App\Modules\Vehicle\Contracts\VehicleConstraints;
 use App\Modules\Vehicle\Models\Vehicle;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class VehicleAvailabilityService implements VehicleAvailabilityChecker
 {
@@ -48,15 +49,39 @@ class VehicleAvailabilityService implements VehicleAvailabilityChecker
         // can't race in between the check and the parent transaction's
         // insert. Adding a new booking type means writing a new provider
         // — no edits here.
+        //
+        // Provider exceptions are caught individually: if one source (e.g.
+        // limousine_services schema migration breaks) throws, we still get
+        // a partial view and fail SAFE (deny availability) rather than
+        // 500-ing the whole booking flow. The exception is logged with
+        // provider context for ops to triage.
         $windows = [];
         $sameDayCount = 0;
+        $providerErrors = 0;
         foreach ($this->busyProviders as $provider) {
-            foreach ($provider->windowsFor([$vehicleId], $date, $date, withLock: true) as $w) {
-                $windows[] = $w;
-                if ($w->start->toDateString() === $date) {
-                    $sameDayCount++;
+            try {
+                foreach ($provider->windowsFor([$vehicleId], $date, $date, withLock: true) as $w) {
+                    $windows[] = $w;
+                    if ($w->start->toDateString() === $date) {
+                        $sameDayCount++;
+                    }
                 }
+            } catch (\Throwable $e) {
+                $providerErrors++;
+                Log::error('BusyWindowsProvider failed during availability check', [
+                    'provider'   => get_class($provider),
+                    'vehicle_id' => $vehicleId,
+                    'date'       => $date,
+                    'error'      => $e->getMessage(),
+                ]);
             }
+        }
+
+        // Fail safe: if any provider errored, the windows list is partial
+        // — we don't actually know if the vehicle is free. Deny rather
+        // than let the customer book on top of an unknown booking.
+        if ($providerErrors > 0) {
+            return false;
         }
 
         if ($cap !== null && $sameDayCount >= $cap) {
