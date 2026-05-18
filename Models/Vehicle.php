@@ -38,6 +38,13 @@ class Vehicle extends Model
         'city_id',
         'pricing_template_id',
         'vehicle_type_id',
+        'buffer_time_minutes',
+        'max_bookings_per_day',
+    ];
+
+    protected $casts = [
+        'buffer_time_minutes'  => 'integer',
+        'max_bookings_per_day' => 'integer',
     ];
 
     public function inspections()

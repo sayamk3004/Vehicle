@@ -2,160 +2,72 @@
 
 namespace App\Modules\Vehicle\Services;
 
-use App\Modules\Vehicle\Models\Vehicle;
-use App\Modules\Vehicle\Models\JobVehicle;
+use App\Modules\Vehicle\Contracts\BusyWindowsProvider;
 use App\Modules\Vehicle\Contracts\VehicleAvailabilityChecker;
+use App\Modules\Vehicle\Contracts\VehicleConstraints;
+use App\Modules\Vehicle\Models\Vehicle;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class VehicleAvailabilityService implements VehicleAvailabilityChecker
 {
     /**
-     * Check if a vehicle is available for the requested date/time.
-     *
-     * Checks three sources of occupancy:
-     *   1. Fleet job-vehicles (organizum DB)
-     *   2. Customer private-tour bookings (bookinpro DB)
-     *   3. Customer limousine bookings (bookinpro DB)
-     *
-     * Must be called inside a DB::transaction() so lockForUpdate() takes effect.
-     *
-     * @param int        $vehicleId
-     * @param string     $date             Y-m-d
-     * @param string     $time             H:i or H:i:s
-     * @param int|null   $duration         hours (default 1)
-     * @param array      $selectedVehicles skip check for these vehicle IDs (campaign flow)
-     * @param int        $bufferMinutes    buffer time to enforce between bookings
-     * @param int|null   $maxBookingsPerDay null = unlimited
+     * @param iterable<BusyWindowsProvider> $busyProviders  Every module that
+     *   occupies a vehicle (private tour, limousine, fleet job, future
+     *   campaign types) registers a BusyWindowsProvider tagged
+     *   'busy_windows_providers'. The service composes their results, so a
+     *   new booking source plugs in without ever editing this file.
      */
+    public function __construct(
+        private readonly VehicleConstraints $constraints,
+        private readonly iterable           $busyProviders,
+    ) {}
+
     public function isAvailable(
-        int $vehicleId,
+        int    $vehicleId,
         string $date,
         string $time,
-        ?int $duration = 1,
-        array $selectedVehicles = [],
-        int $bufferMinutes = 0,
-        ?int $maxBookingsPerDay = null
+        int    $duration = 1,
+        array  $selectedVehicles = [],
     ): bool {
-        if (in_array($vehicleId, $selectedVehicles)) {
+        if (in_array($vehicleId, $selectedVehicles, true)) {
             return true;
         }
-
         if (!Vehicle::find($vehicleId)) {
             return false;
         }
 
+        $constraints   = $this->constraints->for($vehicleId);
+        $buffer        = $constraints->bufferMinutes;
+        $cap           = $constraints->maxBookingsPerDay;
+
         $requestedStart = Carbon::parse("$date $time");
-        $requestedEnd   = (clone $requestedStart)->addHours(max(1, (int) $duration));
+        $requestedEnd   = (clone $requestedStart)->addHours(max(1, $duration));
 
-        // --- Fleet job-vehicles (organizum DB) ---
-        $engagedJobs = JobVehicle::with(['job.jobable'])
-            ->where('vehicle_id', $vehicleId)
-            ->lockForUpdate()
-            ->get();
-
-        // --- Customer private-tour bookings (bookinpro DB) ---
-        // Vehicle may be tied via private_tours.vehicle_id (service default)
-        // or via booking_private_tours.selected_vehicle_id (campaign funnel choice).
-        $tourIds = DB::table('private_tours')
-            ->where('vehicle_id', $vehicleId)
-            ->pluck('id')
-            ->toArray();
-
-        $ptBookings = DB::table('booking_private_tours')
-            ->join('bookings', 'bookings.id', '=', 'booking_private_tours.booking_id')
-            ->where(function ($q) use ($vehicleId, $tourIds) {
-                $q->whereIn('booking_private_tours.private_tour_id', $tourIds)
-                  ->orWhere('booking_private_tours.selected_vehicle_id', $vehicleId);
-            })
-            ->whereNotIn('bookings.status', ['cancelled', 'rejected', 'completed', 'expired'])
-            ->lockForUpdate()
-            ->get(['booking_private_tours.date', 'booking_private_tours.time', 'booking_private_tours.hours']);
-
-        // --- Customer limousine bookings (bookinpro DB) ---
-        $limoServiceIds = DB::table('limousine_services')
-            ->where('vehicle_id', $vehicleId)
-            ->pluck('id')
-            ->toArray();
-
-        $limoBookings = collect();
-        if (!empty($limoServiceIds)) {
-            $limoBookings = DB::table('booking_limousines')
-                ->join('bookings', 'bookings.id', '=', 'booking_limousines.booking_id')
-                ->whereIn('booking_limousines.limousine_service_id', $limoServiceIds)
-                ->whereNotIn('bookings.status', ['cancelled', 'rejected', 'completed', 'expired'])
-                ->lockForUpdate()
-                ->get([
-                    'booking_limousines.date',
-                    'booking_limousines.time',
-                    'booking_limousines.hours',
-                    'booking_limousines.return_date',
-                    'booking_limousines.return_time',
-                ]);
-        }
-
-        // --- Max bookings per day check (all sources combined) ---
-        if ($maxBookingsPerDay !== null) {
-            $fleetDayCount = $engagedJobs->filter(function ($jv) use ($date) {
-                $jobable = $jv->job?->jobable;
-                return $jobable && Carbon::parse($jobable->date)->toDateString() === $date;
-            })->count();
-
-            $ptDayCount = $ptBookings->filter(fn ($b) => $b->date === $date)->count();
-
-            $limoDayCount = $limoBookings->filter(
-                fn ($b) => ($b->date ?? null) === $date || ($b->return_date ?? null) === $date
-            )->count();
-
-            if (($fleetDayCount + $ptDayCount + $limoDayCount) >= $maxBookingsPerDay) {
-                return false;
-            }
-        }
-
-        // --- Overlap helper (buffer applied symmetrically around each existing booking) ---
-        $overlaps = function (Carbon $existStart, Carbon $existEnd) use ($requestedStart, $requestedEnd, $bufferMinutes): bool {
-            $windowStart = (clone $existStart)->subMinutes($bufferMinutes);
-            $windowEnd   = (clone $existEnd)->addMinutes($bufferMinutes);
-            return $requestedStart->lt($windowEnd) && $requestedEnd->gt($windowStart);
-        };
-
-        // Fleet jobs
-        foreach ($engagedJobs as $jobVehicle) {
-            $jobable = $jobVehicle->job?->jobable;
-            if (!$jobable) {
-                continue;
-            }
-            $s = Carbon::parse("{$jobable->date} {$jobable->time}");
-            $e = (clone $s)->addHours(max(1, (int) ($jobable->duration ?? 1)));
-            if ($overlaps($s, $e)) {
-                return false;
-            }
-        }
-
-        // Customer private-tour bookings
-        foreach ($ptBookings as $b) {
-            $s = Carbon::parse("{$b->date} {$b->time}");
-            $e = (clone $s)->addHours(max(1, (int) ($b->hours ?? 1)));
-            if ($overlaps($s, $e)) {
-                return false;
-            }
-        }
-
-        // Customer limousine bookings (outbound leg + optional return leg)
-        foreach ($limoBookings as $b) {
-            if ($b->date && $b->time) {
-                $s = Carbon::parse("{$b->date} {$b->time}");
-                $e = (clone $s)->addHours(max(1, (int) ($b->hours ?? 1)));
-                if ($overlaps($s, $e)) {
-                    return false;
+        // Pull every occupied window across every registered source. Each
+        // provider locks its own rows for update so a concurrent booking
+        // can't race in between the check and the parent transaction's
+        // insert. Adding a new booking type means writing a new provider
+        // — no edits here.
+        $windows = [];
+        $sameDayCount = 0;
+        foreach ($this->busyProviders as $provider) {
+            foreach ($provider->windowsFor([$vehicleId], $date, $date, withLock: true) as $w) {
+                $windows[] = $w;
+                if ($w->start->toDateString() === $date) {
+                    $sameDayCount++;
                 }
             }
-            if ($b->return_date && $b->return_time) {
-                $s = Carbon::parse("{$b->return_date} {$b->return_time}");
-                $e = (clone $s)->addHours(max(1, (int) ($b->hours ?? 1)));
-                if ($overlaps($s, $e)) {
-                    return false;
-                }
+        }
+
+        if ($cap !== null && $sameDayCount >= $cap) {
+            return false;
+        }
+
+        foreach ($windows as $w) {
+            $bufferedStart = (clone $w->start)->subMinutes($buffer);
+            $bufferedEnd   = (clone $w->end)->addMinutes($buffer);
+            if ($requestedStart->lt($bufferedEnd) && $requestedEnd->gt($bufferedStart)) {
+                return false;
             }
         }
 

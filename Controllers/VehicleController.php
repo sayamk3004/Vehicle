@@ -74,22 +74,20 @@ class VehicleController extends Controller
     public function check(Request $request, $vehicleId)
     {
         $request->validate([
-            'date'                => 'required|date',
-            'time'                => 'required',
-            'duration'            => 'nullable|integer|min:1',
-            'timezone'            => 'nullable|string',
-            'buffer_time_minutes' => 'nullable|integer|min:0|max:1440',
-            'max_bookings_per_day' => 'nullable|integer|min:1|max:999',
+            'date'     => 'required|date',
+            'time'     => 'required',
+            'duration' => 'nullable|integer|min:1',
+            'timezone' => 'nullable|string',
         ]);
 
+        // Buffer + daily cap are resolved internally by the availability
+        // service via VehicleConstraints; callers don't read those off the
+        // Vehicle model anymore.
         $available = $this->availabilityService->isAvailable(
-            $vehicleId,
+            (int) $vehicleId,
             $request->date,
             $request->time,
-            $request->duration ?? 1,
-            [],
-            (int) ($request->buffer_time_minutes ?? 0),
-            $request->filled('max_bookings_per_day') ? (int) $request->max_bookings_per_day : null
+            (int) ($request->duration ?? 1),
         );
 
         return response()->json(['available' => $available]);
@@ -174,20 +172,20 @@ class VehicleController extends Controller
             }
 
             $outwardAvailable = $this->availabilityService->isAvailable(
-                $vehicle->id,
+                (int) $vehicle->id,
                 $request->date,
                 $request->time,
-                $request->duration_hours ?? 1
+                (int) ($request->duration_hours ?? 1),
             );
             if (!$outwardAvailable) return false;
 
             // Availability check for return leg (if round trip)
             if ($isRoundTrip) {
                 $returnAvailable = $this->availabilityService->isAvailable(
-                    $vehicle->id,
+                    (int) $vehicle->id,
                     $request->return_date,
                     $request->return_time,
-                    $request->duration_hours ?? 1  // assume same duration for return
+                    (int) ($request->duration_hours ?? 1),  // assume same duration for return
                 );
                 if (!$returnAvailable) return false;
             }
@@ -354,6 +352,8 @@ class VehicleController extends Controller
                 'vehicle_type_id'      => ['nullable', 'integer', $this->vehicleTypes->existsRule()],
                 'job_category_ids'     => 'nullable|array',
                 'job_category_ids.*'   => 'integer',
+                'buffer_time_minutes'  => 'nullable|integer|min:0|max:1440',
+                'max_bookings_per_day' => 'nullable|integer|min:1|max:255',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -390,6 +390,10 @@ class VehicleController extends Controller
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
             $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
+            $vehicle->buffer_time_minutes  = (int) $request->input('buffer_time_minutes', 0);
+            $vehicle->max_bookings_per_day = $request->filled('max_bookings_per_day')
+                ? (int) $request->input('max_bookings_per_day')
+                : null;
 
             $jobCategoryIds = collect($request->input('job_category_ids', []))
                 ->filter(fn ($id) => is_numeric($id))
@@ -440,6 +444,8 @@ class VehicleController extends Controller
                 'vehicle_type_id'     => ['nullable', 'integer', $this->vehicleTypes->existsRule()],
                 'job_category_ids'    => 'nullable|array',
                 'job_category_ids.*'  => 'integer',
+                'buffer_time_minutes'  => 'nullable|integer|min:0|max:1440',
+                'max_bookings_per_day' => 'nullable|integer|min:1|max:255',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -488,6 +494,10 @@ class VehicleController extends Controller
             $vehicle->city_id = $request->city_id;
             $vehicle->pricing_template_id = $request->input('pricing_template_id') ?? null;
             $vehicle->vehicle_type_id     = $request->input('vehicle_type_id') ?? null;
+            $vehicle->buffer_time_minutes  = (int) $request->input('buffer_time_minutes', 0);
+            $vehicle->max_bookings_per_day = $request->filled('max_bookings_per_day')
+                ? (int) $request->input('max_bookings_per_day')
+                : null;
 
             $jobCategoryIds = collect($request->input('job_category_ids', []))
                 ->filter(fn ($id) => is_numeric($id))

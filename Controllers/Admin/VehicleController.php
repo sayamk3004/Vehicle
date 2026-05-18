@@ -268,11 +268,10 @@ class VehicleController extends Controller
         ]);
 
         $available = $this->availabilityService->isAvailable(
-            $vehicleId,
+            (int) $vehicleId,
             $request->date,
             $request->time,
-            $request->duration ?? 1,
-            []
+            (int) ($request->duration ?? 1),
         );
 
         return response()->json(['available' => $available]);
