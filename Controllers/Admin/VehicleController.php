@@ -7,7 +7,7 @@ use App\Modules\Shared\Helpers\Helpers;
 use App\Modules\Vehicle\Models\JobVehicle;
 use App\Modules\Shared\Models\Organization;
 use App\Modules\Vehicle\Models\Vehicle;
-use App\Modules\Vehicle\Services\VehicleAvailabilityService;
+use App\Modules\Vehicle\Contracts\VehicleAvailabilityChecker;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,7 +19,7 @@ use Inertia\Inertia;
 class VehicleController extends Controller
 {
     public function __construct(
-        protected VehicleAvailabilityService $availabilityService
+        protected VehicleAvailabilityChecker $availabilityService
     ) {}
 
     protected function nullableNumeric(mixed $value): mixed

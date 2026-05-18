@@ -15,7 +15,7 @@ use App\Modules\Shared\Models\Organization;
 use App\Modules\Vehicle\Models\Vehicle;
 use App\Modules\Shared\Models\Zone;
 use App\Modules\Shared\Models\ZoneAssignment;
-use App\Modules\Vehicle\Services\VehicleAvailabilityService;
+use App\Modules\Vehicle\Contracts\VehicleAvailabilityChecker;
 use App\Services\DistanceCalculator;
 use App\Services\PricingEngine;
 use App\Services\ZoneService;
@@ -39,7 +39,7 @@ class VehicleController extends Controller
 
     public function __construct(
         AuthContract $authService,
-        VehicleAvailabilityService $availabilityService,
+        VehicleAvailabilityChecker $availabilityService,
         ZoneService $zoneService,
         VehicleTypeReader $vehicleTypes,
         PricingTemplateReader $pricingTemplates,
