@@ -40,11 +40,16 @@ class Vehicle extends Model
         'vehicle_type_id',
         'buffer_time_minutes',
         'max_bookings_per_day',
+        // Customer-facing details (added 2026-05-19).
+        'transmission',
+        'fuel_type',
+        'wheelchair_accessible',
     ];
 
     protected $casts = [
-        'buffer_time_minutes'  => 'integer',
-        'max_bookings_per_day' => 'integer',
+        'buffer_time_minutes'   => 'integer',
+        'max_bookings_per_day'  => 'integer',
+        'wheelchair_accessible' => 'boolean',
     ];
 
     public function inspections()

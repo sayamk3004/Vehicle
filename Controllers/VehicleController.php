@@ -343,7 +343,10 @@ class VehicleController extends Controller
                 // Update keeps existing image when not re-uploaded; if a new
                 // file IS sent, the same caps as create() apply.
                 'image' => 'nullable|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
-                'mileage' => 'required|numeric|min:0',
+                // Fleet-ops metadata, not booking-blocking. Optional so a
+                // vendor can publish a vehicle without filling odometer
+                // readings they may not have.
+                'mileage' => 'nullable|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
@@ -356,6 +359,10 @@ class VehicleController extends Controller
                 'job_category_ids.*'   => 'integer',
                 'buffer_time_minutes'  => 'nullable|integer|min:0|max:1440',
                 'max_bookings_per_day' => 'nullable|integer|min:1|max:255',
+                // Customer-facing attributes — all optional.
+                'transmission'          => 'nullable|string|max:30',
+                'fuel_type'             => 'nullable|string|max:30',
+                'wheelchair_accessible' => 'nullable|boolean',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -396,6 +403,11 @@ class VehicleController extends Controller
             $vehicle->max_bookings_per_day = $request->filled('max_bookings_per_day')
                 ? (int) $request->input('max_bookings_per_day')
                 : null;
+            // Customer-facing attributes — nullable; cast booleans defensively
+            // because a missing checkbox sends nothing rather than false.
+            $vehicle->transmission          = $request->input('transmission') ?: null;
+            $vehicle->fuel_type             = $request->input('fuel_type') ?: null;
+            $vehicle->wheelchair_accessible = filter_var($request->input('wheelchair_accessible', false), FILTER_VALIDATE_BOOLEAN);
 
             $jobCategoryIds = collect($request->input('job_category_ids', []))
                 ->filter(fn ($id) => is_numeric($id))
@@ -438,7 +450,10 @@ class VehicleController extends Controller
                 // 5 MB cap + dimensions guard so the upload pipeline can't be
                 // weaponised to fill disk or OOM the image converter.
                 'image' => 'required|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
-                'mileage' => 'required|numeric|min:0',
+                // Fleet-ops metadata, not booking-blocking. Optional so a
+                // vendor can publish a vehicle without filling odometer
+                // readings they may not have.
+                'mileage' => 'nullable|numeric|min:0',
                 'color' => 'required',
                 'model' => 'required',
                 'year' => 'required|integer|min:1900',
@@ -451,6 +466,10 @@ class VehicleController extends Controller
                 'job_category_ids.*'  => 'integer',
                 'buffer_time_minutes'  => 'nullable|integer|min:0|max:1440',
                 'max_bookings_per_day' => 'nullable|integer|min:1|max:255',
+                // Customer-facing attributes — all optional.
+                'transmission'          => 'nullable|string|max:30',
+                'fuel_type'             => 'nullable|string|max:30',
+                'wheelchair_accessible' => 'nullable|boolean',
             ], [
                 'title.required' => 'Title is required',
                 'description.required' => 'Description is required',
@@ -503,6 +522,11 @@ class VehicleController extends Controller
             $vehicle->max_bookings_per_day = $request->filled('max_bookings_per_day')
                 ? (int) $request->input('max_bookings_per_day')
                 : null;
+            // Customer-facing attributes — nullable; cast booleans defensively
+            // because a missing checkbox sends nothing rather than false.
+            $vehicle->transmission          = $request->input('transmission') ?: null;
+            $vehicle->fuel_type             = $request->input('fuel_type') ?: null;
+            $vehicle->wheelchair_accessible = filter_var($request->input('wheelchair_accessible', false), FILTER_VALIDATE_BOOLEAN);
 
             $jobCategoryIds = collect($request->input('job_category_ids', []))
                 ->filter(fn ($id) => is_numeric($id))
@@ -536,7 +560,10 @@ class VehicleController extends Controller
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|string|in:active,paused',
+            // 'maintenance' separates "vehicle in the shop" from a deliberate
+            // pause — both hide it from the funnel via where('status', 'active')
+            // checks, but ops dashboards can filter on the real cause.
+            'status' => 'required|string|in:active,paused,maintenance',
         ]);
 
         $vehicle = Vehicle::findOrFail($id);
