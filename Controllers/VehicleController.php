@@ -342,7 +342,7 @@ class VehicleController extends Controller
                 'seats' => 'required|integer|min:2', // Ensures seats is at least 2
                 // Update keeps existing image when not re-uploaded; if a new
                 // file IS sent, the same caps as create() apply.
-                'image' => 'nullable|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
+                'image' => 'nullable|image|mimes:webp,jpg,jpeg,png|dimensions:max_width=4000,max_height=4000',
                 // Fleet-ops metadata, not booking-blocking. Optional so a
                 // vendor can publish a vehicle without filling odometer
                 // readings they may not have.
@@ -449,7 +449,7 @@ class VehicleController extends Controller
                 // Required for create; converted to webp by Helpers::upload.
                 // 5 MB cap + dimensions guard so the upload pipeline can't be
                 // weaponised to fill disk or OOM the image converter.
-                'image' => 'required|image|mimes:webp,jpg,jpeg,png|max:5120|dimensions:max_width=4000,max_height=4000',
+                'image' => 'required|image|mimes:webp,jpg,jpeg,png|dimensions:max_width=4000,max_height=4000',
                 // Fleet-ops metadata, not booking-blocking. Optional so a
                 // vendor can publish a vehicle without filling odometer
                 // readings they may not have.
