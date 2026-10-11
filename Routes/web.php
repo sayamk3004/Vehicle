@@ -31,7 +31,7 @@ Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
 });
 
 
-Route::middleware(['auth:admin'])
+Route::middleware(['auth:admin', 'admin.permission:manage-catalog'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {
