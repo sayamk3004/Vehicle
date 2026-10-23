@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Route;
 
 
 
-Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.', 'middleware' => ['auth', 'organization.module.block:Service Commerce,Technician Booking', 'organization.submodule:vehicle_rental,private_tours']], function () {
+Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.', 'middleware' => ['auth', 'staff', 'organization.module.block:Service Commerce,Technician Booking', 'organization.submodule:vehicle_rental,private_tours']], function () {
     Route::get('/', [VehicleController::class, 'index'])->name('index');
     // Route::group(['middleware' => ['CheckCreationLimits:vehicle']], function () {
     Route::get('/create', [VehicleController::class, 'add'])->name('add');
@@ -31,7 +31,7 @@ Route::group(['prefix' => 'vehicles', 'as' => 'vehicle.'], function () {
 });
 
 
-Route::middleware(['auth:admin', 'admin.permission:manage-catalog'])
+Route::middleware(['admin', 'admin.permission:manage-catalog'])
     ->prefix('admin')
     ->name('admin.')
     ->group(function () {

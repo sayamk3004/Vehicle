@@ -278,6 +278,7 @@ class VehicleController extends Controller
     public function view($id)
     {
         $vehicle = Vehicle::findOrfail($id);
+        abort_unless($vehicle->organization_id === $this->authService->getAuthenticatedUser()->organization_id, 403);
 
         return Inertia::render('Vehicle/View', [
             'vehicle' => $vehicle,
@@ -499,7 +500,7 @@ class VehicleController extends Controller
                 'type' => 'private', // public or private
                 'bookingSlug' => $slug
             ];
-            $token = Crypt::encryptString(json_encode($data));
+            $token = \App\Support\PurposeToken::make(\App\Support\PurposeToken::LANDING, $data);
             $vehicle = new Vehicle();
             $user = Auth::user();
             $vehicle->user_id = $user->id;
