@@ -52,6 +52,19 @@ class Vehicle extends Model
         'wheelchair_accessible' => 'boolean',
     ];
 
+    /** Fields rendered with v-html (security:sanitize-rich-text walks these). */
+    public const RICH_TEXT = ['description'];
+
+    /**
+     * The service-detail fallback description in the TaxiSorrento and
+     * RenaxPrivateTours themes (v-html). Organizum writes this table too,
+     * outside this mutator; the sanitize command covers those rows.
+     */
+    public function setDescriptionAttribute($value): void
+    {
+        $this->attributes['description'] = \App\Modules\Shared\Support\HtmlSanitizer::cleanIfMarkup($value);
+    }
+
     public function inspections()
     {
         return $this->hasMany(Inspection::class, 'vehicle_id')->with(['job']);
